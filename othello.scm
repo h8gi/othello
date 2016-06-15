@@ -1,5 +1,5 @@
 ;;; othello.scm
-(use coops srfi-41)
+(use srfi-41 streams-utils (except vector-lib vector-copy!))
 ;;; state 'empty 'black 'white #f
 (define-values (white black empty outside) (values 0 1 2 3))
 (define *position-list* (iota 64))
@@ -33,7 +33,7 @@
   (display
    (cond [(black? state) "〇"]
          [(white? state) "●"]
-         [else "　"])))
+         [else "　" "＋"])))
 
 (define (black? state)
   (fx= state black))
@@ -59,8 +59,8 @@
     (vector-ref board pos)))
 
 (set! (setter board-ref)
-  (lambda (board pos state)
-    (vector-set! board pos state)))
+      (lambda (board pos state)
+	(vector-set! board pos state)))
 
 (define (board-set! board pos color)
   (vector-set! board pos color))
@@ -70,7 +70,8 @@
   (board-set! board D4 white)
   (board-set! board E4 black)
   (board-set! board E5 white)
-  (board-set! board D5 black))
+  (board-set! board D5 black)
+  board)
 
 (define (board-put! board pos color)
   (if (empty? (board-ref board pos))
@@ -84,7 +85,8 @@
                       (board-flip-line! board pos color 9))])
         (if (zero? count) #f
             (begin (board-set! board pos color)
-                   count)))
+                   (+ count 1)		; add self
+		   )))
       #f))
 
 ;;; board の start に color を置いたときに引っくり返した石の数を返す
@@ -103,79 +105,100 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; tree
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define (make-gtree board)
-  (define (inner board color)
-    (stream-cons
-     board
-     (stream-filter identity
-		    (stream-map (lambda (pos)
-				  (let* ([new-board (board-copy board)]
-					 [count (board-put! new-board pos color)])
-				    (if count
-					(inner new-board (flip-color color))
-					#f)))
-				*position-stream*))))
-  (inner board black))
-;;; proc get board
-(define (gtree-for-each proc gtree)
-  (proc (gtree-node gtree))
-  (stream-for-each () (gtree-children gtree)))
+;;; 状態
+;;; 木の中で、手に応じて葉を選択したい
 
-(define (gtree-node gtree)
-  (stream-car gtree))
-(define (gtree-children gtree)
-  (stream-cdr gtree))
+(define-record gtree
+  board					; 盤の状態
+  move-number				; 現在の手数
+  value					; 盤の評価値
+  turn					; 現在の手番
+  move					; 現在の状態に至った動き
+  children				; 未来
+  )
 
+(define-record-printer (gtree x out)
+  (fprintf out "#<gtree: (turn ~A) (next ~A) ~A>"
+	   (gtree-move-number x)
+	   (turn->string (gtree-turn x))
+	   (gtree-board x)))
 
-(define *board* (make-board))
-(board-init! *board*)
-(define *gtree* (make-gtree *board*))
+(define (first-state)
+  (make-gtree
+   (board-init! (make-board))
+   0
+   #f
+   black
+   #f
+   #f))
 
+(define (gtree-children-num gtree)
+  (stream-length (gtree-children gtree)))
+
+(define (stream-filter-map predicate strm)
+  (stream-filter identity
+		 (stream-map predicate strm)))
+
+(define (start-gtree)
+  (define (inner gtree color other move-number)   
+    (gtree-children-set!
+     gtree
+     (stream-filter-map
+      (lambda (move)
+	(let* ([new-board (board-copy
+			   (gtree-board gtree))]
+	       [count (board-put! new-board move color)])
+	  (if count
+	      (letrec ([new-gtree (make-gtree
+				   new-board
+				   (+ 1 move-number)
+				   #f
+				   other
+				   move
+				   #f)])
+		(inner new-gtree other color (+ 1 move-number)))
+	      #f)))
+      *position-stream*))
+    gtree)
+  (inner (first-state) black white 0))
+
+(define gtree (start-gtree))
+
+(define (gtree-travers gtree move)
+  (let loop ([children (gtree-children gtree)])
+    (cond [(stream-null? children) #f]
+	  [(= move (gtree-move (stream-car children)))
+	   (stream-car children)]
+	  [else (loop (stream-cdr children))])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; game
+;;; game eval
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; http://uguisu.skr.jp/othello/5-1.html
 
-(define-class <game> ()
-  ([board: #:initform (make-board)
-           #:accessor board-of]
-   [turn: #:initform black
-          #:accessor turn-of]
-   [white: #:initform 0
-           #:accessor white-count]
-   [black: #:initform 0
-           #:accessor black-count]))
+;;; 局面評価用テーブル 
+(define *weight-table*
+  (vector  30 -12  0 -1 -1  0 -12  30
+	   -12 -15 -3 -3 -3 -3 -15 -12
+	   0  -3  0 -1 -1  0  -3   0
+	   -1  -3 -1 -1 -1 -1  -3  -1
+	   -1  -3 -1 -1 -1 -1  -3  -1
+	   0  -3  0 -1 -1  0  -3   0
+	   -12 -15 -3 -3 -3 -3 -15 -12
+	   30 -12  0 -1 -1  0 -12  30))
 
-(define-method (turn-count (game <game>))
-  (if (black? (turn-of game))
-      (black-count game)
-      (white-count game)))
-(define-method (turn-count-set! (game <game>) value)
-  (if (black? (turn-of game))
-      (set! (black-count game) value)
-      (set! (white-count game) value)))
-(define-method (turn-change! (game <game>))
-  (set! (turn-of game) (flip-color (turn-of game))))
+(define (eval-board board table color other)
+  (vector-fold (lambda (i score x)
+		 (cond [(= color x) (+ score (vector-ref table i))]
+		       [(= other x) (- score (vector-ref table i))]
+		       [else score]))
+	       0
+	       board))
 
-(define-method (game-put! (game <game>) pos)
-  (let ([count (board-put! (board-of game) pos (turn-of game))])
-    (if count
-        (begin (turn-count-set! game (+ count (turn-count game) 1))
-               (turn-change! game)
-               count)
-        #f)))
-(define-method (game-init! (game <game>))
-  (board-init! (board-of game))
-  (set! (black-count game) 2)
-  (set! (white-count game) 2))
+(define (eval-simple board color)
+  (eval-board board *weight-table* color (flip-color color)))
 
-(define (turn->string turn)
-  (if (black? turn) "black" "white"))
-
-(define-method (game-display (game <game>))
-  (printf "black: ~A\nwhite: ~A\n" (black-count game) (white-count game))
-  (printf "~A turn\n" (turn->string (turn-of game)))
-  (display-board (board-of game)))
-
-(define *game* (make <game>))
+;;; 先手
+;; (define (min-max-black gtree)
+;;   ())
 
