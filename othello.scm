@@ -3,6 +3,7 @@
 ;;; state 'empty 'black 'white #f
 (define-values (white black empty outside) (values 0 1 2 3))
 (define *position-list* (iota 64))
+(define *position-stream* (list->stream (iota 64)))
 (define-values (
                 A1 B1 C1 D1 E1 F1 G1 H1
                 A2 B2 C2 D2 E2 F2 G2 H2
@@ -102,8 +103,33 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; tree
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define (start-board-tree board pos)
-  (board-copy board))
+(define (make-gtree board)
+  (define (inner board color)
+    (stream-cons
+     board
+     (stream-filter identity
+		    (stream-map (lambda (pos)
+				  (let* ([new-board (board-copy board)]
+					 [count (board-put! new-board pos color)])
+				    (if count
+					(inner new-board (flip-color color))
+					#f)))
+				*position-stream*))))
+  (inner board black))
+;;; proc get board
+(define (gtree-for-each proc gtree)
+  (proc (gtree-node gtree))
+  (stream-for-each () (gtree-children gtree)))
+
+(define (gtree-node gtree)
+  (stream-car gtree))
+(define (gtree-children gtree)
+  (stream-cdr gtree))
+
+
+(define *board* (make-board))
+(board-init! *board*)
+(define *gtree* (make-gtree *board*))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -152,5 +178,4 @@
   (display-board (board-of game)))
 
 (define *game* (make <game>))
-
 
