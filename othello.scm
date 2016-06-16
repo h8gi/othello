@@ -45,7 +45,8 @@
   (fx= state outside))
 (define (flip-color color)
   (if (black? color) white black))
-
+(define (color->string color)
+  (if (black? color) "black" "white"))
 (define (board-copy board)
   (let ([new (make-board)])
     (vector-copy! board new)
@@ -120,7 +121,7 @@
 (define-record-printer (gtree x out)
   (fprintf out "#<gtree: (turn ~A) (next ~A) ~A>"
 	   (gtree-move-number x)
-	   (turn->string (gtree-turn x))
+	   (color->string (gtree-turn x))
 	   (gtree-board x)))
 
 (define (first-state)
