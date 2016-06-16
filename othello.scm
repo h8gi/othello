@@ -21,8 +21,21 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; board
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; (define (display-board board)
+;;   (display "  ＡＢＣＤＥＦＧＨ\n")
+;;   (do ([i 0 (add1 i)])
+;;       ((<= 64 i))
+;;     (when (= 0 (modulo i 8)) (printf "~A " (+ 1(quotient i 8))))
+;;     (display-state (board-ref board i))
+;;     (when (= 7 (modulo i 8)) (newline))))
+;; (define (display-state state)
+;;   (display
+;;    (cond [(black? state) "〇"]
+;;          [(white? state) "●"]
+;;          [else "　" "＋"])))
+
 (define (display-board board)
-  (display "  ＡＢＣＤＥＦＧＨ\n")
+  (display "  A B C D E F G H\n")
   (do ([i 0 (add1 i)])
       ((<= 64 i))
     (when (= 0 (modulo i 8)) (printf "~A " (+ 1(quotient i 8))))
@@ -31,9 +44,9 @@
 
 (define (display-state state)
   (display
-   (cond [(black? state) "〇"]
-         [(white? state) "●"]
-         [else "　" "＋"])))
+   (cond [(black? state) "O "]
+         [(white? state) "@ "]
+         [else " " "+ "])))
 
 (define (black? state)
   (fx= state black))
