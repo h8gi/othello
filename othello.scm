@@ -1,7 +1,7 @@
 ;;; othello.scm
 (use srfi-41 streams-utils (except vector-lib vector-copy!))
 ;;; state 'empty 'black 'white #f
-(define-values (white black empty outside) (values 0 1 2 3))
+(define-values (empty white black outside) (values 0 1 2 3))
 (define *position-list* (iota 64))
 (define *position-stream* (list->stream (iota 64)))
 (define-values (
@@ -140,30 +140,29 @@
   (stream-filter identity
 		 (stream-map predicate strm)))
 
-(define (start-gtree)
+(define (start-gtree gtree)
   (define (inner gtree color other move-number)   
-    (gtree-children-set!
-     gtree
-     (stream-filter-map
-      (lambda (move)
-	(let* ([new-board (board-copy
-			   (gtree-board gtree))]
-	       [count (board-put! new-board move color)])
-	  (if count
-	      (letrec ([new-gtree (make-gtree
-				   new-board
-				   (+ 1 move-number)
-				   #f
-				   other
-				   move
-				   #f)])
-		(inner new-gtree other color (+ 1 move-number)))
-	      #f)))
-      *position-stream*))
-    gtree)
-  (inner (first-state) black white 0))
+    (let ([children (stream-filter-map
+                     (lambda (move)
+                       (let* ([new-board (board-copy
+                                          (gtree-board gtree))]
+                              [count (board-put! new-board move color)])
+                         (if count
+                             (letrec ([new-gtree (make-gtree
+                                                  new-board
+                                                  (+ 1 move-number)
+                                                  #f
+                                                  other
+                                                  move
+                                                  #f)])
+                               (inner new-gtree other color (+ 1 move-number)))
+                             #f)))
+                     *position-stream*)])
+      (gtree-children-set! gtree children)
+      gtree))
+  (inner gtree black white 0))
 
-(define gtree (start-gtree))
+(define gtree (start-gtree (first-state)))
 
 (define (gtree-travers gtree move)
   (let loop ([children (gtree-children gtree)])
@@ -196,10 +195,44 @@
 	       0
 	       board))
 
-(define (eval-simple board color)
-  (eval-board board *weight-table* color (flip-color color)))
+(define (eval-simple gtree color)
+  (let ([value (gtree-value gtree)])
+    (cond [value value]
+          [(eval-board (gtree-board gtree)
+                       *weight-table* color (flip-color color))
+           => (lambda (new-value)
+                (gtree-value-set! gtree new-value)
+                new-value)]
+          [else #f])))
+
+
 
 ;;; 先手
 ;; (define (min-max-black gtree)
 ;;   ())
+
+
+
+(define (game gtree)
+  (define (black-turn gtree)
+    (let ([children (gtree-children gtree)])
+      (if (stream-null? children) gtree
+          (let ([new (stream-maximum (lambda (gtree1 gtree2)
+                                       (< (eval-simple gtree1 black)
+                                          (eval-simple gtree2 black)))
+                                     children)])
+            (display-board (gtree-board new))
+                                        ;            (thread-sleep! 0.2)
+            (white-turn new)))))
+  (define (white-turn gtree)
+    (let ([children (gtree-children gtree)])
+      (if (stream-null? children) gtree
+          (let ([new (stream-minimum (lambda (gtree1 gtree2)
+                                       (< (eval-simple gtree1 black)
+                                          (eval-simple gtree2 black)))
+                                     children)])
+            (display-board (gtree-board new))
+                                        ;            (thread-sleep! 0.2)
+            (black-turn new)))))
+  (black-turn gtree))
 
