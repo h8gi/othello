@@ -132,6 +132,8 @@
   pass					; pass
   )
 
+
+
 (define-record-printer (gtree x out)
   (fprintf out "#<gtree: (turn ~A) (next ~A) ~A>"
 	   (gtree-move-number x)
@@ -144,6 +146,7 @@
    0
    #f
    black
+   #f
    #f
    #f))
 
@@ -162,28 +165,53 @@
                                           (gtree-board gtree))]
                               [count (board-put! new-board move color)])
                          (if count
-			     ;; 手があった
+			     ;; 石をmoveに置けた
                              (letrec ([new-gtree (make-gtree
                                                   new-board
                                                   (+ 1 move-number)
                                                   #f
                                                   other
                                                   move
-                                                  #f)])
+                                                  #f
+						  #f)])
                                (inner new-gtree other color (+ 1 move-number)))
-			     ;; パス
-                             (if (gtree-pass tree)
-				 ;; どちらもパス
-				 #f
-				 ;; パス
-				 (letrec ([new-gtree (make-gtree
-						      new-board
-						      (+ 1 move-number)
-						      #f
-						      )]))))))
-                     *position-stream*)])
-      (gtree-children-set! gtree children)
-      gtree))
+			     ;; 置けなかった… (fiter-mapで消される)
+			     #f))) *position-stream*)])
+      ;; 普通に手があるか、パス2連続
+      (if (or (stream-occupied? children) (gtree-pass gtree))
+	  (begin (gtree-children-set! gtree children) gtree)
+	  ;; パス
+	  (begin (gtree-pass-set! gtree #t) (inner gtree other color move-number)))))
+  (inner gtree black white 0))
+
+(define (start-gtree gtree)
+  (define (inner gtree color other move-number)   
+    (let ([children (stream-filter-map
+                     (lambda (move)
+                       (let* ([new-board (board-copy
+                                          (gtree-board gtree))]
+                              [count (board-put! new-board move color)])
+                         (if count
+			     ;; 石をmoveに置けた
+                             (letrec ([new-gtree (make-gtree
+                                                  new-board
+                                                  (+ 1 move-number)
+                                                  #f
+                                                  other
+                                                  move
+                                                  #f
+						  #f)])
+                               (inner new-gtree other color (+ 1 move-number)))
+			     ;; 置けなかった… (fiter-mapで消される)
+			     #f))) *position-stream*)])
+      ;; 普通に手があるか、パス2連続
+      (if (or (stream-occupied? children) (gtree-pass gtree))
+      	  (begin (gtree-children-set! gtree children) gtree)
+      	  ;; パス
+      	  (begin (gtree-pass-set! gtree #t) (inner gtree other color move-number)))
+      ;; (gtree-children-set! gtree children)
+      ;; gtree
+      ))
   (inner gtree black white 0))
 
 (define (gtree-travers gtree move)
@@ -258,3 +286,4 @@
 
 
 (define gtree (start-gtree (first-state)))
+(game (start-gtree (first-state)))
