@@ -126,9 +126,10 @@
   board					; 盤の状態
   move-number				; 現在の手数
   value					; 盤の評価値
-  turn					; 現在の手番
+  turn					; 次の手番
   move					; 現在の状態に至った動き
-  children				; 未来
+  children				; 未来  
+  pass					; pass
   )
 
 (define-record-printer (gtree x out)
@@ -161,6 +162,7 @@
                                           (gtree-board gtree))]
                               [count (board-put! new-board move color)])
                          (if count
+			     ;; 手があった
                              (letrec ([new-gtree (make-gtree
                                                   new-board
                                                   (+ 1 move-number)
@@ -169,13 +171,20 @@
                                                   move
                                                   #f)])
                                (inner new-gtree other color (+ 1 move-number)))
-                             #f)))
+			     ;; パス
+                             (if (gtree-pass tree)
+				 ;; どちらもパス
+				 #f
+				 ;; パス
+				 (letrec ([new-gtree (make-gtree
+						      new-board
+						      (+ 1 move-number)
+						      #f
+						      )]))))))
                      *position-stream*)])
       (gtree-children-set! gtree children)
       gtree))
   (inner gtree black white 0))
-
-(define gtree (start-gtree (first-state)))
 
 (define (gtree-travers gtree move)
   (let loop ([children (gtree-children gtree)])
@@ -224,8 +233,6 @@
 ;; (define (min-max-black gtree)
 ;;   ())
 
-
-
 (define (game gtree)
   (define (black-turn gtree)
     (let ([children (gtree-children gtree)])
@@ -249,3 +256,5 @@
             (black-turn new)))))
   (black-turn gtree))
 
+
+(define gtree (start-gtree (first-state)))
