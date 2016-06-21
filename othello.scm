@@ -15,6 +15,17 @@
                 A8 B8 C8 D8 E8 F8 G8 H8)
   (apply values *position-list*))
 
+(define *position-alist* (map cons '(
+				     A1 B1 C1 D1 E1 F1 G1 H1
+				     A2 B2 C2 D2 E2 F2 G2 H2
+				     A3 B3 C3 D3 E3 F3 G3 H3
+				     A4 B4 C4 D4 E4 F4 G4 H4
+				     A5 B5 C5 D5 E5 F5 G5 H5
+				     A6 B6 C6 D6 E6 F6 G6 H6
+				     A7 B7 C7 D7 E7 F7 G7 H7
+				     A8 B8 C8 D8 E8 F8 G8 H8)
+			      (iota 64)))
+
 (define (make-board)
   (make-vector 64 empty))
 
@@ -116,6 +127,9 @@
              (inner (+ dir current-pos) (+ count 1))])))
   (inner (+ start dir) 0))
 
+(define (board-count board pred?)
+  (vector-count (lambda (i x) (pred? x)) board))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; tree
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -157,13 +171,10 @@
   (stream-filter identity
 		 (stream-map predicate strm)))
 
-
-
 (define (start-gtree gtree)
   (define (inner gtree color other move-number)   
     (let ([children (stream-filter-map
                      (lambda (move)
-		       (display ".")
                        (let* ([new-board (board-copy
                                           (gtree-board gtree))]
                               [count (board-put! new-board move color)])
@@ -177,7 +188,8 @@
                                                   move
                                                   #f
 						  #f)])
-                               (inner new-gtree other color (+ 1 move-number)))
+                               (delay
+				 (inner new-gtree other color (+ 1 move-number))))
 			     ;; 置けなかった… (fiter-mapで消される)
 			     #f))) *position-stream*)])
       ;; 普通に手があるか、パス2連続
@@ -194,12 +206,11 @@
   (inner gtree black white 0))
 
 
-
 (define (gtree-travers gtree move)
   (let loop ([children (gtree-children gtree)])
     (cond [(stream-null? children) #f]
-	  [(= move (gtree-move (stream-car children)))
-	   (stream-car children)]
+	  [(= move (gtree-move (force (stream-car children))))
+	   (force (stream-car children))]
 	  [else (loop (stream-cdr children))])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -226,6 +237,7 @@
 	       0
 	       board))
 
+
 (define (eval-simple gtree color)
   (let ([value (gtree-value gtree)])
     (cond [value value]
@@ -243,32 +255,48 @@
 ;;   ())
 
 (define (game gtree)
-  (define (black-turn gtree)
-    (let ([children (gtree-children gtree)])
-      (if (stream-null? children) gtree
-          (let ([new (stream-maximum (lambda (gtree1 gtree2)
-                                       (< (eval-simple gtree1 black)
-                                          (eval-simple gtree2 black)))
-                                     children)])
-            (display-board (gtree-board new))
-                                        ;            (thread-sleep! 0.2)
-            (white-turn new)))))
-  (define (white-turn gtree)
-    (let ([children (gtree-children gtree)])
-      (if (stream-null? children) gtree
-          (let ([new (stream-minimum (lambda (gtree1 gtree2)
-                                       (< (eval-simple gtree1 black)
-                                          (eval-simple gtree2 black)))
-                                     children)])
-            (display-board (gtree-board new))
-                                        ;            (thread-sleep! 0.2)
-            (black-turn new)))))
-  (black-turn gtree))
+  (define (inner gtree eval1 eval2)
+    (let ([children (gtree-children (force gtree))])
+      (if (stream-null? children) (force gtree)
+	  (let ([new (stream-maximum (lambda (gtree1 gtree2)
+				       (< (eval1 (force gtree1))
+					  (eval2 (force gtree2))))
+				     children)])
+	    (display-board (gtree-board (force new)))
+	    (inner new eval2 eval1)))))
+  (inner gtree (cut eval-simple <> black) (cut eval-simple <> white)))
 
 
 (define gtree (start-gtree (first-state)))
-;;(game (start-gtree (first-state)))
+(game (start-gtree (first-state)))
 
+(define (next-moves gtree)
+  (stream->list
+   (stream-map (compose gtree-move force)
+	       (gtree-children (force gtree)))))
 
-
+;; (define (game gtree)
+;;   (define (user-turn gtree)
+;;     (let ([nexts (next-moves gtree)])
+;;       (cond [(null? nexts) (force gtree)]
+;; 	    [(gtree-pass (force gtree)) (comp-turn gtree)]
+;; 	    [else
+;; 	     (display "your move> ")
+;; 	     (let loop ([input (read)])
+;; 	       (if (member (alist-ref input *position-alist*) nexts)
+;; 		   (let ([new (gtree-travers (force gtree) (alist-ref input *position-alist*))])
+;; 		     (display-board (gtree-board (force new)))
+;; 		     (comp-turn new))
+;; 		   (begin (display "your move> ") (loop (read)))))])))
+;;   (define (comp-turn gtree)
+;;     (let ([children (gtree-children (force gtree))])
+;;       (cond [(stream-null? children) (force gtree)]
+;; 	    [(gtree-pass (force gtree)) (user-turn gtree)]
+;; 	    [else (let ([new (stream-maximum (lambda (gtree1 gtree2)
+;; 					       (< (eval-simple (force gtree1) black)
+;; 						  (eval-simple (force gtree2) black)))
+;; 					     children)])
+;; 		    (display-board (gtree-board (force new)))
+;; 		    (user-turn new))])))
+;;   (comp-turn gtree))
 
