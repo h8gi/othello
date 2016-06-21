@@ -159,7 +159,7 @@
   (stream-map force (gtree-children gtree)))
 
 (define (gtree-children-num gtree)
-  (stream-length (children-of gtree)))
+  (stream-length (gtree-children gtree)))
 
 (define (stream-filter-map predicate strm) 
   (stream-filter identity
@@ -231,7 +231,6 @@
 	       0
 	       board))
 
-
 (define (eval-simple gtree color)
   (let ([value (gtree-value gtree)])
     (cond [value value]
@@ -242,42 +241,43 @@
                 new-value)]
           [else #f])))
 
-
 (define (next-moves gtree)
   (stream->list
    (stream-map (compose gtree-move force)
 	       (children-of gtree))))
 
-
 (define (make-cpu-player color eval-function)
   (lambda (gtree)
     (if (= color (gtree-turn gtree))
         (let ([children (children-of gtree)])
-          (if (stream-null? children) (values gtree 'end)
+          (if (stream-null? children) (values gtree 'end #f)
               (let ([new (stream-maximum (lambda (gtree1 gtree2)
                                            (< (eval-function gtree1)
                                               (eval-function gtree2)))
                                          children)])
                 (display-board (gtree-board new))
-                (values new 'cont))))
-        (values gtree 'pass))))
+                (values new 'cont (gtree-move new)))))
+        (values gtree 'pass #f))))
 
 
-(define (start-game player1 player2)
-  (define (inner p1 p2 gtree)
-    (receive (new-gtree state) (p1 gtree)
+(define (start-game gtree player1 player2)
+  (define (inner gtree p1 p2)
+    (receive (new-gtree state move) (p1 gtree)
       (case state
-        [(pass cont) (inner p2 p1 new-gtree)]
+        [(cont pass) (printf "move: ~A~%" move) (inner new-gtree p2 p1)]
         [(end) (let ([black-count (board-count (gtree-board new-gtree) black?)]
                      [white-count (board-count (gtree-board new-gtree) white?)])
                  (printf "BLACK: ~A~%WHITE: ~A~%" black-count white-count)
                  (cond [(> black-count white-count) (display "BLACK WIN!!")]
                        [(> white-count black-count) (display "WHITE WIN!!")]
                        [else (display "DRAW...")])
-                 (newline))]
+                 (newline)
+		 gtree)]
         [else (error "what's?")])))
-  (inner player1 player2 (start-gtree)))
+  (inner gtree player1 player2))
 
-(start-game (make-cpu-player black (cut eval-simple <> black))
-            (make-cpu-player white (cut eval-simple <> white)))
+(define gtree (start-gtree))
+(start-game gtree
+	    (make-cpu-player black (cut eval-simple <> black))
+	    (make-cpu-player white (cut eval-simple <> white)))
 
