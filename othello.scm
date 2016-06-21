@@ -155,6 +155,7 @@
    #f
    #f))
 
+;;; force-children
 (define (children-of gtree)
   (stream-map force (gtree-children gtree)))
 
@@ -255,7 +256,6 @@
                                            (< (eval-function gtree1)
                                               (eval-function gtree2)))
                                          children)])
-                (display-board (gtree-board new))
                 (values new 'cont (gtree-move new)))))
         (values gtree 'pass #f))))
 
@@ -264,7 +264,10 @@
   (define (inner gtree p1 p2)
     (receive (new-gtree state move) (p1 gtree)
       (case state
-        [(cont pass) (printf "move: ~A~%" move) (inner new-gtree p2 p1)]
+        [(cont pass)
+	 (printf "move: ~A~%" move)
+	 (display-board (gtree-board new-gtree))
+	 (inner new-gtree p2 p1)]
         [(end) (let ([black-count (board-count (gtree-board new-gtree) black?)]
                      [white-count (board-count (gtree-board new-gtree) white?)])
                  (printf "BLACK: ~A~%WHITE: ~A~%" black-count white-count)
