@@ -2,56 +2,52 @@
 (use srfi-41 streams-utils (except vector-lib vector-copy!))
 ;;; state 'empty 'black 'white #f
 (define-values (empty white black outside) (values 0 1 2 3))
-(define *position-list* (iota 64))
-(define *position-stream* (list->stream (iota 64)))
+(define *position-list* (iota 81))
 (define-values (
-                A1 B1 C1 D1 E1 F1 G1 H1
-                A2 B2 C2 D2 E2 F2 G2 H2
-                A3 B3 C3 D3 E3 F3 G3 H3
-                A4 B4 C4 D4 E4 F4 G4 H4
-                A5 B5 C5 D5 E5 F5 G5 H5
-                A6 B6 C6 D6 E6 F6 G6 H6
-                A7 B7 C7 D7 E7 F7 G7 H7
-                A8 B8 C8 D8 E8 F8 G8 H8)
+                A1 B1 C1 D1 E1 F1 G1 H1 W
+                A2 B2 C2 D2 E2 F2 G2 H2 W
+                A3 B3 C3 D3 E3 F3 G3 H3 W
+                A4 B4 C4 D4 E4 F4 G4 H4 W
+                A5 B5 C5 D5 E5 F5 G5 H5 W
+                A6 B6 C6 D6 E6 F6 G6 H6 W
+                A7 B7 C7 D7 E7 F7 G7 H7 W
+                A8 B8 C8 D8 E8 F8 G8 H8 W
+		W  W  W  W  W  W  W  W  W)
   (apply values *position-list*))
 
 (define *position-alist* (map cons '(
-				     A1 B1 C1 D1 E1 F1 G1 H1
-				     A2 B2 C2 D2 E2 F2 G2 H2
-				     A3 B3 C3 D3 E3 F3 G3 H3
-				     A4 B4 C4 D4 E4 F4 G4 H4
-				     A5 B5 C5 D5 E5 F5 G5 H5
-				     A6 B6 C6 D6 E6 F6 G6 H6
-				     A7 B7 C7 D7 E7 F7 G7 H7
-				     A8 B8 C8 D8 E8 F8 G8 H8)
-			      (iota 64)))
+				     A1 B1 C1 D1 E1 F1 G1 H1 W
+				     A2 B2 C2 D2 E2 F2 G2 H2 W
+				     A3 B3 C3 D3 E3 F3 G3 H3 W
+				     A4 B4 C4 D4 E4 F4 G4 H4 W
+				     A5 B5 C5 D5 E5 F5 G5 H5 W
+				     A6 B6 C6 D6 E6 F6 G6 H6 W
+				     A7 B7 C7 D7 E7 F7 G7 H7 W
+				     A8 B8 C8 D8 E8 F8 G8 H8 W
+				     W  W  W  W  W  W  W  W  W)
+			      (iota 81)))
+(define *wall-pos* (map cdr (filter (compose (cut eq? <> 'W) car) *position-alist*)))
+(define *board-pos* (map cdr (filter (compose not (cut eq? <> 'W) car) *position-alist*)))
+(define *board-strm* (list->stream *board-pos*))
 
 (define (make-board)
-  (make-vector 64 empty))
+  (let ([board (make-vector 81 empty)])
+    (vector-for-each (lambda (i x)
+		       (if (memv i *wall-pos*)
+			   (vector-set! board i outside)))
+		     board)
+    board))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; board
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; (define (display-board board)
-;;   (display "  ＡＢＣＤＥＦＧＨ\n")
-;;   (do ([i 0 (add1 i)])
-;;       ((<= 64 i))
-;;     (when (= 0 (modulo i 8)) (printf "~A " (+ 1(quotient i 8))))
-;;     (display-state (board-ref board i))
-;;     (when (= 7 (modulo i 8)) (newline))))
-;; (define (display-state state)
-;;   (display
-;;    (cond [(black? state) "〇"]
-;;          [(white? state) "●"]
-;;          [else "　" "＋"])))
-
 (define (display-board board)
   (display "  A B C D E F G H\n")
   (do ([i 0 (add1 i)])
-      ((<= 64 i))
-    (when (= 0 (modulo i 8)) (printf "~A " (+ 1(quotient i 8))))
-    (display-state (board-ref board i))
-    (when (= 7 (modulo i 8)) (newline))))
+      ((<= 72 i))
+    (when (= 0 (modulo i 9)) (printf "~A " (+ 1 (quotient i 9))))
+    (unless (= 8 (modulo i 9)) (display-state (board-ref board i)))
+    (when (= 8 (modulo i 9)) (newline))))
 
 (define (display-state state)
   (display
@@ -76,9 +72,6 @@
     (vector-copy! board new)
     new))
 
-(define (xy->index x y)
-  (fx+ y (fx* x 8)))
-
 (define (board-ref board pos)
   (handle-exceptions exn outside
     (vector-ref board pos)))
@@ -100,14 +93,14 @@
 
 (define (board-put! board pos color)
   (if (empty? (board-ref board pos))
-      (let ([count (+ (board-flip-line! board pos color -9)
+      (let ([count (+ (board-flip-line! board pos color -10)
+                      (board-flip-line! board pos color -9)
                       (board-flip-line! board pos color -8)
-                      (board-flip-line! board pos color -7)
                       (board-flip-line! board pos color -1)
                       (board-flip-line! board pos color 1)
-                      (board-flip-line! board pos color 7)
                       (board-flip-line! board pos color 8)
-                      (board-flip-line! board pos color 9))])
+                      (board-flip-line! board pos color 9)
+                      (board-flip-line! board pos color 10))])
         (if (zero? count) #f
             (begin (board-set! board pos color)
                    (+ count 1)		; add self
@@ -145,8 +138,6 @@
   children				; 未来  
   pass					; pass
   )
-
-
 
 (define-record-printer (gtree x out)
   (fprintf out "#<gtree: (turn ~A) (next ~A) ~A>"
@@ -191,7 +182,7 @@
                                (delay
 				 (inner new-gtree other color (+ 1 move-number))))
 			     ;; 置けなかった… (fiter-mapで消される)
-			     #f))) *position-stream*)])
+			     #f))) *board-strm*)])
       ;; 普通に手があるか、パス2連続
       ;; occupiedで遅くなっている模様
       ;; 遅延リストが評価されてしまうのだ(なんで?)
@@ -220,14 +211,15 @@
 
 ;;; 局面評価用テーブル 
 (define *weight-table*
-  (vector  30 -12  0 -1 -1  0 -12  30
-	   -12 -15 -3 -3 -3 -3 -15 -12
-	   0  -3  0 -1 -1  0  -3   0
-	   -1  -3 -1 -1 -1 -1  -3  -1
-	   -1  -3 -1 -1 -1 -1  -3  -1
-	   0  -3  0 -1 -1  0  -3   0
-	   -12 -15 -3 -3 -3 -3 -15 -12
-	   30 -12  0 -1 -1  0 -12  30))
+  (vector  30 -12  0 -1 -1  0 -12  30 'W
+	   -12 -15 -3 -3 -3 -3 -15 -12 'W
+	   0  -3  0 -1 -1  0  -3   0 'W
+	   -1  -3 -1 -1 -1 -1  -3  -1 'W
+	   -1  -3 -1 -1 -1 -1  -3  -1 'W
+	   0  -3  0 -1 -1  0  -3   0 'W
+	   -12 -15 -3 -3 -3 -3 -15 -12 'W
+	   30 -12  0 -1 -1  0 -12  30 'W
+	   'W 'W 'W 'W 'W 'W 'W 'W 'W))
 
 (define (eval-board board table color other)
   (vector-fold (lambda (i score x)
